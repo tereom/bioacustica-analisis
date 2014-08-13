@@ -1,6 +1,7 @@
 ---
 title: "Exploratorio sonidos"
 output: html_document
+author: Fernando, Julián, Tere
 ---
 Paquetes para procesamiento y análisis de ondas de sonido.
 ```{r message = FALSE}
