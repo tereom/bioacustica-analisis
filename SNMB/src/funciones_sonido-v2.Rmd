@@ -1,0 +1,179 @@
+---
+title: "Exploratorio sonidos"
+output: html_document
+---
+Paquetes para procesamiento y análisis de ondas de sonido.
+```{r message = FALSE}
+library(seewave)
+library(tuneR)
+library(soundecology)
+```
+
+```{r include=FALSE, cache=FALSE}
+library(ggplot2)
+library(reshape2)
+library(magrittr)
+```
+
+
+Con el objetivo de entender los conceptos básicos de acústica y las bases 
+del análisis del spectograma de ondas se recomienda
+leer el documemto introductorio ["A primer of acoustic analysis for landscape ecologists"](http://research.coquipr.com/pdf/Villanueva-Rivera.etal.2011.nopages.pdf).
+
+### Datos 
+Experimentaremos con wave_1 a wave_4 tienes una duración de 90 segundos y su información proviene de grabaciones ultrasónicas, mientras que wave_5
+dura 12168 segundos (de los cuáles leeremos únicamente 90 para la siguiente
+gráfica), la grabación 5 es una grabación regular, al inicio de esta grabación
+se puede escuchar disusión humana. Graficamos la 
+representación espectográfica de las ondas (corresponde a una transformada de Fourier de corto plazo).
+
+### Espectrogramas
+```{r, cache = TRUE}
+wave_1 <- readWave("../data/wave_files/70201_S3_ARM_20140527_1.wav")
+summary(wave_1)
+spectro_1 <- spectro(wave_1, flim = c(0, 50), fftw = TRUE)
+
+```
+
+Podemos visuaizar decibeles en niveles más bajos.
+
+```{r, cache = TRUE, width = 7.2}
+spectro_grid <- expand.grid(spectro_1$time, spectro_1$freq)
+spectro_grid$amp <- t(spectro_1$amp) %>% c %>% cut(breaks = 6)
+ 
+ggplot(spectro_grid, aes(x = Var1, y = Var2)) +
+  geom_tile(aes(fill = amp)) + 
+  scale_fill_brewer() +
+  labs(title = "Wave 1", x = "Tiempo(s)", y = "Frecuencia(kHz)", 
+       fill = "Amplitud(dB)")  
+```
+<audio controls>
+  <source src="../data/wave_files/70201_S3_ARM_20140527_1.wav" type="audio/wav">
+</audio>
+
+* el sonido esta desactivado por default en Google Chrome.
+
+```{r, cache = TRUE, width = 7.2}
+wave_5 <- readWave("../data/wave_files/R26_0001_3.wav", from = 1, to = 91, 
+                   units = "seconds")
+summary(wave_5)
+spectro_5 <- spectro(wave_5, flim = c(0, 15)) # notar cambio de escala
+
+spectro_grid <- expand.grid(spectro_5$time, spectro_5$freq)
+spectro_grid$amp <- t(spectro_5$amp) %>% c %>% cut(breaks = 6)
+ 
+ggplot(spectro_grid, aes(x = Var1, y = Var2)) +
+  geom_tile(aes(fill = amp)) + 
+  scale_fill_brewer() +
+  labs(title = "Wave 5", x = "Tiempo(s)", y = "Frecuencia(kHz)", 
+       fill = "Amplitud(dB)")
+```
+
+Veamos como se ve _tropicalsound_, una grabación de ranas tropicales.
+
+```{r, cache = TRUE}
+data(tropicalsound)
+spectro_t <- spectro(tropicalsound)  
+```
+
+## Índice de complejidad acústica (ACI)
+El ACI, [de Pieretti et. al. 2011](http://www.sciencedirect.com/science/article/pii/S1470160X10002037), se basa en la observación de que muchos sonidos bióticos, 
+como el canto de aves, se caracterizan por una variabilidad intrínsica en las intensidades, mientras que algunos de los ruidos generados por el hombre (como
+coches o tránsito de aviones) presentan valores de intensidad muy constantes.
+
+* Se ha probado, [Depraetere et. al. 2011](http://www.sciencedirect.com/science/article/pii/S1470160X11001361), que el ACI esta correlacionado con el número de vocalizaciones
+grabadas, sin embargo, no fue creado para estimar $\alpha$ o $\beta$ diversidad.
+* Se ha reportado que el ACI es robusto a ruido continuo (e.g. aviones) pero 
+sensible a ruido accidental (e.g. viento, lluvia), una solución es identificar los
+días con condiciones climáticas adversas y eliminarlos de la muestra.
+
+```{r}
+# waves_aci <- multiple_sounds(directory = "../data/wave_files", 
+#  resultfile = "../data/index_files/aci_results.csv", soundindex = "acoustic_complexity", 
+#  no_cores = "max")
+aci_results <- read.csv("../data/index_files/aci_results.csv")
+aci_results[, c("FILENAME", "LEFT_CHANNEL")]
+```
+
+## Índice normalizado de diferencias soundscape  
+El NDSI de [REAL](http://www.real.msu.edu) y [Kasten et al. 2012](https://www.msu.edu/~kasten/publications/online/kasten.gage.fox.joo.reallib.2012.pdf) busca estimar
+el nivel de ruido antropogénico en el soundscape, para esto se calcula el 
+cociente de ruido generado por humanos (antropofonía) y los componentes acústicos 
+biológicos (biofonías) en las muestras.
+
+El NDSI se basa en resultados del estudio de grabaciones, en estos se ha concluido 
+que los sonidos mecánicos son más prevalentes entre 1-2 kHz, mientras que los 
+sonidos biológicos son más prevalentes entre 2-8 kHz (Gage et al., 2001; Gage and Napoletano, 2004). Es así que para calcular el nivel de biofonías presente en una señal acústica comenzamos 
+calculando la densidad del poder espectral de la señal (PSD: power spectral density).
+Después se calcula un estimado rectangular de la integral de la PSD para los 
+rangos correspondientes a las frecuencias antropogénicas y biofónicas, para 
+finalmente obtener:
+$$NDSI = \frac{\beta - \alpha}{\beta + \alpha}$$
+
+```{r}
+# waves_ndsi <- multiple_sounds(directory = "../data/wave_files", 
+#   resultfile = "../data/index_files/ndsi_results.csv", soundindex = "ndsi", no_cores = "max")
+ndsi_results <- read.csv("../data/index_files/ndsi_results.csv")
+ndsi_results[, c("FILENAME", "LEFT_CHANNEL")]
+```
+
+Veamos una aproximación al PSD correspondiente a _tropicalsound_, $\alpha$
+corresponde al área bajo la curva entre las barras rojas, mientras que $\beta$
+corresponde al área bajo la curva en los extremos. El NDSI correspondiente a este
+archivo es `r ndsi(tropicalsound)`.
+
+```{r, cache = TRUE, width = 5.5, height = 5.5}
+psd_t <- data.frame(freq = spectro_t$freq, power = apply(spectro_t$amp, 1, mean))
+ggplot(psd_t, aes(x = freq, y = power)) +
+  geom_point() + geom_smooth(se = FALSE) + 
+  geom_vline(xintercept = 1, color = "red") + 
+  geom_vline(xintercept = 2, color = "red") + 
+  # geom_vline(xintercept = 11, color = "red") + 
+  labs(title = "Tropicalsound", x = "Frecuencia (kHz)", y = "poder")
+```
+
+
+## Índice bioacústico
+El índice bioacústico de [Boelman, et al. 2007](http://cao.carnegiescience.edu/uploads/boelman_etal_EA_2007.pdf), se calcula como el área bajo la PSD arriba de cierto umbral de frecuencia mínimo y abajo de cierto umbral de frecuencia máxima, seleccionados de acuerdo a la frecuencia que presentan los cantos de aves de la región.
+
+```{r}
+# waves_bio <- multiple_sounds(directory = "../data/wave_files", 
+#   resultfile = "../data/index_files/bio_results.csv", soundindex = "bioacoustic_index", 
+#   no_cores = "max")
+bio_results <- read.csv("../data/index_files/bio_results.csv")
+bio_results[, c("FILENAME", "LEFT_CHANNEL")]
+```
+
+## Índice de diversidad acústica (ADI)
+El ADI de [Villanueva-Rivera et al. 2011](http://research.coquipr.com/pdf/Villanueva-Rivera.etal.2011.nopages.pdf) se calcula dividiendo el espectograma en grupos
+y en cada uno se calcula la proporción de las señales por encima de un umbral. 
+El ADI es el resultado de aplicar el índice de Shannon ($H'$) o a estos grupos.
+$$H' = \sum_{i= 1}^S p_i ln p_i$$
+donde $S$ es el número de grupos y $p_i$ es la proporción de las señales encima
+de un umbral que se encuentran en el i-ésimo grupo.
+
+```{r}
+# waves_adi <- multiple_sounds(directory = "../data/wave_files", 
+#   resultfile = "../data/index_files/adi_results.csv", soundindex = "acoustic_diversity", 
+#   no_cores = "max")
+adi_results <- read.csv("../data/index_files/adi_results.csv")
+adi_results[, c("FILENAME", "LEFT_CHANNEL")]
+```
+
+## Índice de uniformidad acústica (AEI)
+El AEI de [Villanueva-Rivera et al. 2011](http://research.coquipr.com/pdf/Villanueva-Rivera.etal.2011.nopages.pdf) se calcula dividiendo el espectograma en grupos
+y se aplica el índice de Gini a estos grupos. 
+
+```{r}
+# waves_even <- multiple_sounds(directory = "../data/wave_files", 
+#   resultfile = "../data/index_files/even_results.csv", soundindex = "acoustic_evenness", 
+#   no_cores = "max")
+even_results <- read.csv("../data/index_files/even_results.csv")
+even_results[, c("FILENAME", "LEFT_CHANNEL")]
+```
+
+### Otras referencias
+http://www.sciencedirect.com/science/article/pii/S1470160X11001361  
+http://www.sciencedirect.com/science/article/pii/S1574954111000586  
+
+[Relación entre diversidad filogenética y funcional con diversidad acústica](http://sueur.jerome.perso.neuf.fr/WebPage_PapersPDF/Gascetal_EcolIndicators_2013.pdf)
